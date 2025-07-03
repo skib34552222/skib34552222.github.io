@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>API Proxy</title>
+</head>
+<body>
+  <script>
+    const targetBase = 'https://expressions-score-travelling-having.trycloudflare.com';
+
+    async function proxyRequest() {
+      const url = new URL(window.location.href);
+      const path = url.pathname + (url.search || '');
+
+      try {
+        const response = await fetch(targetBase + path, {
+          method: 'GET', // Or 'POST', 'PUT', etc. — you can auto-detect later
+          headers: {
+            'Content-Type': 'application/json'
+            // Add any headers you need
+          }
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await response.json();
+          document.body.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+        } else {
+          const text = await response.text();
+          document.body.innerHTML = `<pre>${text}</pre>`;
+        }
+
+      } catch (err) {
+        document.body.innerHTML = `<h1>Proxy Error</h1><pre>${err}</pre>`;
+      }
+    }
+
+    proxyRequest();
+  </script>
+</body>
+</html>
