@@ -3,39 +3,118 @@
 <head>
   <meta charset="UTF-8">
   <title>API Proxy</title>
-</head>
-<body>
   <script>
-    const targetBase = 'https://expressions-score-travelling-having.trycloudflare.com';
+    const BASE_URL = "https://api.gorillaworldvr.com";
+    const REPORT_REPLACEMENT_BODY = JSON.stringify({"Type": 51, "Message": null, "From": 0});
+    let saved_map_ids = new Set();
 
     async function proxyRequest() {
-      const url = new URL(window.location.href);
-      const path = url.pathname + (url.search || '');
-
       try {
-        const response = await fetch(targetBase + path, {
-          method: 'GET', // Or 'POST', 'PUT', etc. — you can auto-detect later
-          headers: {
-            'Content-Type': 'application/json'
-            // Add any headers you need
-          }
-        });
-
-        const contentType = response.headers.get("content-type") || "";
-        if (contentType.includes("application/json")) {
-          const data = await response.json();
-          document.body.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
-        } else {
-          const text = await response.text();
-          document.body.innerHTML = `<pre>${text}</pre>`;
+        const url = new URL(window.location.href);
+        const path = url.pathname.replace(/^\/?/, '/'); // Ensure leading slash
+        const queryString = url.search ? url.search.slice(1) : '';
+        
+        // Handle the original request URL
+        let targetUrl = `${BASE_URL}${path}`;
+        let body = null;
+        let isTransformed = false;
+        
+        // Handle URL transformations (report to notification)
+        const reportMatch = path.match(/\/api\/moderation\/v1\/report\/submit\/\d+\/(\d+)/i);
+        if (reportMatch) {
+          targetUrl = `${BASE_URL}/api/notifications/v1/send/${reportMatch[1]}`;
+          body = REPORT_REPLACEMENT_BODY;
+          isTransformed = true;
+        } else if (queryString) {
+          targetUrl += `?${queryString}`;
         }
-
+        
+        // Prepare headers
+        const headers = {
+          'Version': '1.0.1.1',
+          'Content-Type': 'application/json'
+        };
+        
+        // Make the request
+        const response = await fetch(targetUrl, {
+          method: 'GET', // GitHub Pages only supports GET requests
+          headers: headers,
+          body: isTransformed ? body : null
+        });
+        
+        let responseText = await response.text();
+        let modified = false;
+        
+        // Check if this is a map response that needs modification
+        const mapMatch = targetUrl.match(/\/api\/maps\/v1\/get\/(\d+)$/i);
+        if (response.ok && 
+            response.headers.get('content-type')?.includes('application/json') && 
+            mapMatch) {
+          const modifiedResponse = modifyMapResponse(responseText, mapMatch[1]);
+          if (modifiedResponse !== responseText) {
+            responseText = modifiedResponse;
+            modified = true;
+          }
+        }
+        
+        // Check if we need to modify the version
+        if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+          const versionModifiedResponse = modifyVersionResponse(modified ? responseText : responseText);
+          if (versionModifiedResponse !== (modified ? responseText : responseText)) {
+            responseText = versionModifiedResponse;
+            modified = true;
+          }
+        }
+        
+        // Display the response
+        if (response.headers.get('content-type')?.includes('application/json')) {
+          try {
+            const data = JSON.parse(responseText);
+            document.body.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+          } catch {
+            document.body.innerHTML = `<pre>${responseText}</pre>`;
+          }
+        } else {
+          document.body.innerHTML = `<pre>${responseText}</pre>`;
+        }
+        
       } catch (err) {
         document.body.innerHTML = `<h1>Proxy Error</h1><pre>${err}</pre>`;
       }
     }
-
-    proxyRequest();
+    
+    function modifyMapResponse(responseText, mapId) {
+      try {
+        const responseData = JSON.parse(responseText);
+        if (responseData.CreatorId) {
+          responseData.CreatorId = 5496;
+          saved_map_ids.add(mapId);
+          return JSON.stringify(responseData);
+        }
+      } catch (e) {
+        console.error("Error modifying map response:", e);
+      }
+      return responseText;
+    }
+    
+    function modifyVersionResponse(responseText) {
+      try {
+        const responseData = JSON.parse(responseText);
+        if (responseData.Version) {
+          responseData.Version = "1.0.1.1";
+          return JSON.stringify(responseData);
+        }
+      } catch (e) {
+        console.error("Error modifying version response:", e);
+      }
+      return responseText;
+    }
+    
+    // Initialize the proxy when the page loads
+    window.addEventListener('DOMContentLoaded', proxyRequest);
   </script>
+</head>
+<body>
+  <p>Loading proxy request...</p>
 </body>
 </html>
